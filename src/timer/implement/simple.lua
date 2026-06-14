@@ -8,8 +8,9 @@ local TIMER_KEY_SEQ = assert(Const.TIMER_KEY_SEQ)
 local TIMER_KEY_INTERVAL = assert(Const.TIMER_KEY_INTERVAL)
 local TIMER_KEY_FUNC = assert(Const.TIMER_KEY_FUNC)
 
+-- 基于全量遍历管理用户定时器
 ---@class CSimpleImpl
-CSimpleImpl = DefClass("timer.CSimpleImpl")
+local CSimpleImpl = DefClass("timer.CSimpleImpl")
 
 function CSimpleImpl:_Ctor()
 	self.__timers = {}
@@ -38,3 +39,9 @@ function CSimpleImpl:OnTick(manager, now)
 		end
 	end
 end
+
+local M = {}
+
+M.CSimpleImpl = CSimpleImpl
+
+return M

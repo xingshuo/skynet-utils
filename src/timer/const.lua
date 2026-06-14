@@ -4,7 +4,7 @@ local M = {}
 M.TIMER_IMPL = {
 	HASHED_WHEEL = 1, -- 单层时间轮
 	HEAP_QUEUE = 2,
-	SEQUENCE = 3,
+	SEQUENCE = 3, -- 触发间隔分组队列
 	SIMPLE = 4,
 	TIMING_WHEEL = 5, -- 多层时间轮
 }

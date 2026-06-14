@@ -10,9 +10,9 @@ local TIMER_KEY_SEQ = assert(Const.TIMER_KEY_SEQ)
 local TIMER_KEY_INTERVAL = assert(Const.TIMER_KEY_INTERVAL)
 local TIMER_KEY_FUNC = assert(Const.TIMER_KEY_FUNC)
 
-
+-- 基于单层时间轮管理用户定时器
 ---@class CHashedWheelImpl
-CHashedWheelImpl = DefClass("timer.CHashedWheelImpl")
+local CHashedWheelImpl = DefClass("timer.CHashedWheelImpl")
 
 function CHashedWheelImpl:_Ctor(accuracy, size)
 	assert(accuracy >= 1 and accuracy <= 100, accuracy)
@@ -63,26 +63,22 @@ function CHashedWheelImpl:OnTick(manager, now)
 			local func = timer[TIMER_KEY_FUNC]
 			if not func then -- removed
 				manager.__timers[seq] = nil
-				goto continue
-			end
-			if timer.rounds > 0 then
+			elseif timer.rounds > 0 then
 				timer.rounds = timer.rounds - 1
 				t = t + 1
 				bucket[t] = timer
-				goto continue
-			end
-
-			if (seq & TIMER_TAG_REPEAT) == TIMER_TAG_REPEAT then
-				timer[TIMER_KEY_NEXT_TS] = now + timer[TIMER_KEY_INTERVAL]
-				local pn = self.__pendings.n + 1
-				self.__pendings.n = pn
-				self.__pendings[pn] = timer
 			else
-				manager.__timers[seq] = nil
+				if (seq & TIMER_TAG_REPEAT) == TIMER_TAG_REPEAT then
+					timer[TIMER_KEY_NEXT_TS] = now + timer[TIMER_KEY_INTERVAL]
+					local pn = self.__pendings.n + 1
+					self.__pendings.n = pn
+					self.__pendings[pn] = timer
+				else
+					manager.__timers[seq] = nil
+				end
+				-- should not block
+				Skynet.fork(func)
 			end
-			-- should not block
-			Skynet.fork(func)
-			::continue::
 		end
 	end
 	self.__tick = self.__tick + walkTick
@@ -94,3 +90,9 @@ function CHashedWheelImpl:OnTick(manager, now)
 	end
 	self.__pendings.n = 0
 end
+
+local M = {}
+
+M.CHashedWheelImpl = CHashedWheelImpl
+
+return M

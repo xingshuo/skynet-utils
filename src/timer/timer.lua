@@ -3,6 +3,7 @@ local Const = require "timer.const"
 local HashedWheel = require "timer.implement.hashed_wheel"
 local HeapQueue = require "timer.implement.heap_queue"
 local Sequence = require "timer.implement.sequence"
+local Simple = require "timer.implement.simple"
 local TimingWheel = require "timer.implement.timing_wheel"
 local ClassFactory = require "infra.class_factory"
 local Log = require "log"
@@ -44,6 +45,8 @@ function CTimerManager:_Ctor(mode, ...)
 		self.__impl = HeapQueue.CHeapqImpl:New(...)
 	elseif mode == TIMER_IMPL.SEQUENCE then
 		self.__impl = Sequence.CSequenceImpl:New(...)
+	elseif mode == TIMER_IMPL.SIMPLE then
+		self.__impl = Simple.CSimpleImpl:New(...)
 	elseif mode == TIMER_IMPL.TIMING_WHEEL then
 		self.__impl = TimingWheel.CTimingWheelImpl:New(...)
 	else

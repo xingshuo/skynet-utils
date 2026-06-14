@@ -13,8 +13,9 @@ local function _timerLeCmp(t1, t2)
 	return t1[TIMER_KEY_NEXT_TS] <= t2[TIMER_KEY_NEXT_TS]
 end
 
+-- 基于优先队列管理用户定时器
 ---@class CHeapqImpl
-CHeapqImpl = DefClass("timer.CHeapqImpl")
+local CHeapqImpl = DefClass("timer.CHeapqImpl")
 
 function CHeapqImpl:_Ctor()
 	self.__heap = {
@@ -34,20 +35,24 @@ function CHeapqImpl:OnTick(manager, now)
 		if not func then -- removed
 			manager.__timers[seq] = nil
 			Heapq.Pop(self.__heap)
-			goto continue
-		end
-		if timer[TIMER_KEY_NEXT_TS] > now then
+		elseif timer[TIMER_KEY_NEXT_TS] > now then
 			break
-		end
-		if (seq & TIMER_TAG_REPEAT) == TIMER_TAG_REPEAT then
-			timer[TIMER_KEY_NEXT_TS] = now + timer[TIMER_KEY_INTERVAL]
-			Heapq.Replace(self.__heap, timer)
 		else
-			manager.__timers[seq] = nil
-			Heapq.Pop(self.__heap)
+			if (seq & TIMER_TAG_REPEAT) == TIMER_TAG_REPEAT then
+				timer[TIMER_KEY_NEXT_TS] = now + timer[TIMER_KEY_INTERVAL]
+				Heapq.Replace(self.__heap, timer)
+			else
+				manager.__timers[seq] = nil
+				Heapq.Pop(self.__heap)
+			end
+			-- should not block
+			Skynet.fork(func)
 		end
-		-- should not block
-		Skynet.fork(func)
-		::continue::
 	end
 end
+
+local M = {}
+
+M.CHeapqImpl = CHeapqImpl
+
+return M
