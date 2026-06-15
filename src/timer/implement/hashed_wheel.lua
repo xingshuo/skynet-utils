@@ -1,7 +1,8 @@
 local Skynet = require "skynet"
 local Const = require "timer.const"
-
 local Date = require "date"
+
+local max = math.max
 
 local TIMER_TAG_REPEAT = assert(Const.TIMER_TAG_REPEAT)
 
@@ -29,9 +30,10 @@ function CHashedWheelImpl:_Ctor(accuracy, size)
 end
 
 function CHashedWheelImpl:Push(timer)
-	local deadlineTick = (timer[TIMER_KEY_NEXT_TS] - self.__start_ts) // self.__accuracy
-	timer.rounds = (deadlineTick - self.__tick) // self.__size
-	local index = (deadlineTick % self.__size) + 1
+	local deadline = max(timer[TIMER_KEY_NEXT_TS] - self.__start_ts, 1)
+	local deadlineTick = (deadline - 1) // self.__accuracy + 1
+	timer.rounds = (deadlineTick - self.__tick - 1) // self.__size
+	local index = (deadlineTick - 1) % self.__size + 1
 	local bucket = self.__buckets[index]
 	local t = bucket.t + 1
 	bucket.t = t

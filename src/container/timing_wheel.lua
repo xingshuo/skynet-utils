@@ -5,7 +5,7 @@ local SESSION_IDX = 1
 local EXPIRE_IDX = 2
 
 ---@class CLevelWheel
-CLevelWheel = DefClass("CLevelWheel")
+local CLevelWheel = DefClass("CLevelWheel")
 
 function CLevelWheel:_Ctor(size)
 	self.__slots = {}
@@ -34,7 +34,7 @@ end
 
 
 ---@class CTimingWheel
-CTimingWheel = DefClass("CTimingWheel")
+local CTimingWheel = DefClass("CTimingWheel")
 
 function CTimingWheel:_Ctor(levelList)
 	local n = #levelList
@@ -124,3 +124,9 @@ end
 function CTimingWheel:GetTick()
 	return self.__tick
 end
+
+local M = {}
+
+M.CTimingWheel = CTimingWheel
+
+return M

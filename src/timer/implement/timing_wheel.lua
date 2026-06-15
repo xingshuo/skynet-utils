@@ -3,6 +3,8 @@ local Const = require "timer.const"
 local TimingWheel = require "container.timing_wheel"
 local Date = require "date"
 
+local max = math.max
+
 local TIMER_TAG_REPEAT = assert(Const.TIMER_TAG_REPEAT)
 
 local TIMER_KEY_NEXT_TS = assert(Const.TIMER_KEY_NEXT_TS)
@@ -26,10 +28,7 @@ function CTimingWheelImpl:_Ctor(accuracy, levelList)
 end
 
 function CTimingWheelImpl:Push(timer)
-	local interval = timer[TIMER_KEY_NEXT_TS] - self.__ts
-	if interval <= 0 then
-		interval = 1
-	end
+	local interval = max(timer[TIMER_KEY_NEXT_TS] - self.__ts, 1)
 	local delta = (interval - 1)//self.__accuracy + 1
 	self.__tw:Push(timer, delta)
 end
