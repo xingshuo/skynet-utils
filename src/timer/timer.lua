@@ -34,7 +34,7 @@ function ITimerImpl:OnTick(manager, now)
 end
 
 ---@class CTimerManager
-CTimerManager = DefClass("CTimerManager")
+local CTimerManager = DefClass("CTimerManager")
 
 function CTimerManager:_Ctor(mode, ...)
 	self.__timers = {}
@@ -159,3 +159,9 @@ function CTimerManager:TimerNum()
 	end
 	return n
 end
+
+local M = {}
+
+M.CTimerManager = CTimerManager
+
+return M
