@@ -52,7 +52,7 @@ function CTimerManager:_Ctor(mode, ...)
 	else
 		assert(false, mode)
 	end
-	assert(ClassFactory.IsInterfaceImpl(self.__impl, ITimerImpl))
+	assert(ClassFactory.IsInterfaceImpl(self.__impl, ITimerImpl), mode)
 end
 
 function CTimerManager:_newSeq(tags)

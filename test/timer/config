@@ -6,3 +6,4 @@ luaservice = "./test/timer/?.lua;" .. "./skynet/service/?.lua;" .. "./skynet/ser
 lua_path = "./src/?.lua;" .. "./skynet/lualib/compat10/?.lua;" .. "./skynet/lualib/?.lua"
 lua_cpath = "./skynet/luaclib/?.so"
 cpath = "./skynet/cservice/?.so"
+preload = "./src/preload.lua"
