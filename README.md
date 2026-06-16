@@ -10,3 +10,7 @@
 ```bash
 # ./skynet/skynet test/timer/config
 ```
+* 运行timer各实现的性能benchmark（对比5种实现 Push/OnTick 在不同量级下的耗时与内存）
+```bash
+# ./skynet/skynet test/timer/benchmark_config
+```

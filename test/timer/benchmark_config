@@ -1,0 +1,9 @@
+thread = 4
+harbor = 0
+start = "benchmark"
+lualoader = "./skynet/lualib/loader.lua"
+luaservice = "./test/timer/?.lua;" .. "./skynet/service/?.lua;" .. "./skynet/service/?/main.lua;"
+lua_path = "./src/?.lua;" .. "./skynet/lualib/compat10/?.lua;" .. "./skynet/lualib/?.lua"
+lua_cpath = "./skynet/luaclib/?.so"
+cpath = "./skynet/cservice/?.so"
+preload = "./src/preload.lua"
