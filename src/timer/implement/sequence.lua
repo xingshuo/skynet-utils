@@ -32,8 +32,7 @@ function CSequenceImpl:OnTick(manager, now)
 	for interval, queue in pairs(self.__groups) do
 		while true do
 			if queue.h == queue.t + 1 then -- queue empty
-				queue.h = 1
-				queue.t = 0
+				self.__groups[interval] = nil
 				break
 			end
 			local h = queue.h

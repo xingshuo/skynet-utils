@@ -2,8 +2,6 @@ local Skynet = require "skynet"
 local Const = require "timer.const"
 local Date = require "date"
 
-local max = math.max
-
 local TIMER_TAG_REPEAT = assert(Const.TIMER_TAG_REPEAT)
 
 local TIMER_KEY_NEXT_TS = assert(Const.TIMER_KEY_NEXT_TS)
@@ -30,6 +28,9 @@ end
 
 function CHashedWheelImpl:Push(timer)
 	local deadlineTick = timer[TIMER_KEY_NEXT_TS] // self.__accuracy
+	if deadlineTick <= self.__tick then
+		deadlineTick = self.__tick + 1  -- 至少下一 tick 触发，避免绕满一圈
+	end
 	timer.rounds = (deadlineTick - self.__tick - 1) // self.__size
 	local index = (deadlineTick - 1) % self.__size + 1
 	local bucket = self.__buckets[index]

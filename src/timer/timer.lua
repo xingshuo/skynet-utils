@@ -106,7 +106,7 @@ function CTimerManager:NewSysTimer(func, interval, is_repeat)
 		func,
 	}
 	self.__timers[seq] = timer
-	Skynet.timeout(delay, function ()
+	Skynet.timeout(interval, function ()
 		self:_onTimeout(seq)
 	end)
 	return seq
