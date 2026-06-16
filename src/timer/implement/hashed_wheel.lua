@@ -41,7 +41,7 @@ end
 function CHashedWheelImpl:OnTick(manager, now)
 	local elapse = now - self.__tick * self.__accuracy
 	for i = 1, elapse // self.__accuracy do
-		local index = (self.__tick + i - 1) % self.__size + 1
+		local index = self.__tick % self.__size + 1
 		local bucket = self.__buckets[index]
 		local t = 0
 		while true do
