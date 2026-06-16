@@ -40,12 +40,7 @@ end
 
 function CHashedWheelImpl:OnTick(manager, now)
 	local elapse = now - self.__tick * self.__accuracy
-	local walkTick = elapse // self.__accuracy
-	if walkTick <= 0 then
-		return
-	end
-
-	for i = 1, walkTick do
+	for i = 1, elapse // self.__accuracy do
 		local index = (self.__tick + i - 1) % self.__size + 1
 		local bucket = self.__buckets[index]
 		local t = 0
@@ -80,8 +75,8 @@ function CHashedWheelImpl:OnTick(manager, now)
 				Skynet.fork(func)
 			end
 		end
+		self.__tick = self.__tick + 1
 	end
-	self.__tick = self.__tick + walkTick
 
 	for i = 1, self.__pendings.n do
 		local timer = self.__pendings[i]
