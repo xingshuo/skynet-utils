@@ -24,14 +24,12 @@ function CHashedWheelImpl:_Ctor(accuracy, size)
 	for i = 1, size do
 		self.__buckets[i] = {h = 1, t = 0}
 	end
-	self.__tick = 0
-	self.__start_ts = Date.CentiSecond()
+	self.__tick = Date.CentiSecond() // accuracy
 	self.__pendings = {n = 0}
 end
 
 function CHashedWheelImpl:Push(timer)
-	local deadline = max(timer[TIMER_KEY_NEXT_TS] - self.__start_ts, 1)
-	local deadlineTick = (deadline - 1) // self.__accuracy + 1
+	local deadlineTick = timer[TIMER_KEY_NEXT_TS] // self.__accuracy
 	timer.rounds = (deadlineTick - self.__tick - 1) // self.__size
 	local index = (deadlineTick - 1) % self.__size + 1
 	local bucket = self.__buckets[index]
@@ -41,7 +39,7 @@ function CHashedWheelImpl:Push(timer)
 end
 
 function CHashedWheelImpl:OnTick(manager, now)
-	local elapse = now - (self.__start_ts + self.__tick * self.__accuracy)
+	local elapse = now - self.__tick * self.__accuracy
 	local walkTick = elapse // self.__accuracy
 	if walkTick <= 0 then
 		return
