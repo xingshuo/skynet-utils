@@ -8,12 +8,15 @@ local TIMER_KEY_SEQ = assert(Const.TIMER_KEY_SEQ)
 local TIMER_KEY_INTERVAL = assert(Const.TIMER_KEY_INTERVAL)
 local TIMER_KEY_FUNC = assert(Const.TIMER_KEY_FUNC)
 
+local MAX_TS = math.maxinteger
+
 -- 基于触发间隔分组队列管理用户定时器
 ---@class CSequenceImpl
 local CSequenceImpl = DefClass("timer.CSequenceImpl")
 
 function CSequenceImpl:_Ctor()
 	self.__groups = {} -- interval : timer queue
+	self.__min_ts = MAX_TS
 end
 
 function CSequenceImpl:Push(timer)
@@ -21,6 +24,10 @@ function CSequenceImpl:Push(timer)
 	local queue = self.__groups[interval]
 	if not queue then
 		self.__groups[interval] = {timer, h = 1, t = 1}
+		local next_ts = timer[TIMER_KEY_NEXT_TS]
+		if next_ts < self.__min_ts then
+			self.__min_ts = next_ts
+		end
 	else
 		local t = queue.t + 1
 		queue.t = t
@@ -29,6 +36,12 @@ function CSequenceImpl:Push(timer)
 end
 
 function CSequenceImpl:OnTick(manager, now)
+	local min_ts = self.__min_ts
+	if min_ts > now then
+		return
+	end
+
+	min_ts = MAX_TS
 	for interval, queue in pairs(self.__groups) do
 		while true do
 			if queue.h == queue.t + 1 then -- queue empty
@@ -43,24 +56,35 @@ function CSequenceImpl:OnTick(manager, now)
 				manager.__timers[seq] = nil
 				queue[h] = nil
 				queue.h = h + 1
-			elseif timer[TIMER_KEY_NEXT_TS] > now then
-				break
-			else
-				queue[h] = nil
-				queue.h = h + 1
-				if (seq & TIMER_TAG_REPEAT) == TIMER_TAG_REPEAT then
-					timer[TIMER_KEY_NEXT_TS] = now + interval
-					local t = queue.t + 1
-					queue.t = t
-					queue[t] = timer
-				else
-					manager.__timers[seq] = nil
-				end
-				-- should not block
-				Skynet.fork(func)
+				goto continue
 			end
+			local next_ts = timer[TIMER_KEY_NEXT_TS]
+			if next_ts > now then
+				if next_ts < min_ts then
+					min_ts = next_ts
+				end
+				break
+			end
+			queue[h] = nil
+			queue.h = h + 1
+			if (seq & TIMER_TAG_REPEAT) == TIMER_TAG_REPEAT then
+				next_ts = now + interval
+				timer[TIMER_KEY_NEXT_TS] = next_ts
+				if next_ts < min_ts then
+					min_ts = next_ts
+				end
+				local t = queue.t + 1
+				queue.t = t
+				queue[t] = timer
+			else
+				manager.__timers[seq] = nil
+			end
+			-- should not block
+			Skynet.fork(func)
+			::continue::
 		end
 	end
+	self.__min_ts = min_ts
 end
 
 local M = {}
