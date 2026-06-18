@@ -28,6 +28,11 @@ function CSimpleImpl:Push(timer)
 	end
 end
 
+function CSimpleImpl:OnRemove(timer)
+	local seq = timer[TIMER_KEY_SEQ]
+	self.__timers[seq] = nil
+end
+
 function CSimpleImpl:OnTick(manager, now)
 	local min_ts = self.__min_ts
 	if min_ts > now then

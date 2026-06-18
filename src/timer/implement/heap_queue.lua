@@ -9,22 +9,21 @@ local TIMER_KEY_SEQ = assert(Const.TIMER_KEY_SEQ)
 local TIMER_KEY_INTERVAL = assert(Const.TIMER_KEY_INTERVAL)
 local TIMER_KEY_FUNC = assert(Const.TIMER_KEY_FUNC)
 
-local function _timerLeCmp(t1, t2)
-	return t1[TIMER_KEY_NEXT_TS] <= t2[TIMER_KEY_NEXT_TS]
-end
-
 -- 基于优先队列管理用户定时器
 ---@class CHeapqImpl
 local CHeapqImpl = DefClass("timer.CHeapqImpl")
 
 function CHeapqImpl:_Ctor()
 	self.__heap = {
-		__le_cmp = _timerLeCmp,
+		__key = TIMER_KEY_NEXT_TS, -- 按 next_ts 字段下标排序，内联比较、无函数调用开销
 	}
 end
 
 function CHeapqImpl:Push(timer)
 	Heapq.Push(self.__heap, timer)
+end
+
+function CHeapqImpl:OnRemove(timer)
 end
 
 function CHeapqImpl:OnTick(manager, now)

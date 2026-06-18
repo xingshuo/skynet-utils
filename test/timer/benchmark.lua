@@ -43,6 +43,13 @@ local LONG_RATIO = 0.05             -- 长期定时器占比（少量）
 local SHORT_INTERVALS = {300, 500, 1000, 1200, 1500, 2000, 3000}    -- 3/5/10/12/15/20/30 s
 local LONG_INTERVALS = {6000, 30000, 60000, 360000}                 -- 1/5/10/60 min
 
+-- “不同 interval 种类数”敏感性 benchmark：固定 N，扫描 distinct interval 数量。
+-- 用于量化 SEQUENCE 随分组数增长的退化拐点（其它实现按时间分桶，应基本持平）。
+local KINDS_FIXED_N = 100000        -- 固定 timer 总数
+local KINDS_LIST = {11, 100, 1000}  -- distinct interval 种类数
+local KINDS_LO = 200                -- interval 取值带 [LO, LO+SPAN]（厘秒），2s..22s
+local KINDS_SPAN = 2000             -- 带宽固定 => 各 KINDS 下平均触发频率近似一致
+
 --==========================================================================--
 -- 工具
 --==========================================================================--
@@ -65,12 +72,14 @@ local function newFakeManager()
 	return { __timers = {} }
 end
 
-local function makeImpls()
+-- hashSize 可按场景覆盖默认值（如 drain 用与到期窗口匹配的槽数，消除 rounds 记账）
+local function makeImpls(hashSize)
+	hashSize = hashSize or HASH_SIZE
 	return {
 		{ name = "SIMPLE", new = function() return Simple.CSimpleImpl:New() end },
 		{ name = "HEAP_QUEUE", new = function() return HeapQueue.CHeapqImpl:New() end },
 		{ name = "SEQUENCE", new = function() return Sequence.CSequenceImpl:New() end },
-		{ name = "HASHED_WHEEL", new = function() return HashedWheel.CHashedWheelImpl:New(ACCURACY, HASH_SIZE) end },
+		{ name = "HASHED_WHEEL", new = function() return HashedWheel.CHashedWheelImpl:New(ACCURACY, hashSize) end },
 		{ name = "TIMING_WHEEL", new = function() return TimingWheel.CTimingWheelImpl:New(ACCURACY, TW_LEVELS) end },
 	}
 end
@@ -92,12 +101,24 @@ local function pad(s, w)
 	return s .. string.rep(" ", w - #s)
 end
 
+-- 按 next_ts 升序排列入队顺序。
+-- SEQUENCE 的前提是「同一 interval 分组内队列按 next_ts 单调」（生产中 timer 创建即入队，
+-- 天然满足）；基准用随机初始相位会破坏该前提，导致同组到期项被队头挡住、推迟触发而少计 fires。
+-- 全局按 next_ts 排序后，每个 interval 子组也随之升序，前提成立；其它实现 order-insensitive，不受影响。
+local function sortByNextTs(timers)
+	table.sort(timers, function(a, b) return a[K_NEXT_TS] < b[K_NEXT_TS] end)
+end
+
 --==========================================================================--
 -- Benchmark 1: Push + Drain（随机散布的到期时间）
 -- 衡量插入吞吐、内存占用，以及一次性触发全部 timer 的耗时
 --==========================================================================--
 local function benchDrain(n)
-	Log.InfoF("===== PUSH + DRAIN  N=%d  (随机 interval ∈ [1,%d]) =====", n, DRAIN_WINDOW)
+	-- 单层时间轮槽数按到期窗口匹配：size >= 窗口 => rounds 恒为 0，
+	-- 不再随时间轮转反复记账，是单层轮在该场景下的合理配置。
+	local drainHashSize = DRAIN_WINDOW
+	Log.InfoF("===== PUSH + DRAIN  N=%d  (随机 interval ∈ [1,%d], HASH_SIZE=%d) =====",
+		n, DRAIN_WINDOW, drainHashSize)
 	Log.InfoF("%s%s%s%s",
 		pad("impl", 16), pad("push(ms)", 14), pad("mem(KB)", 14), pad("drain(ms)", 14))
 
@@ -107,7 +128,7 @@ local function benchDrain(n)
 	local intervals = {}
 	for i = 1, n do intervals[i] = math.random(1, W) end
 
-	for _, impl in ipairs(makeImpls()) do
+	for _, impl in ipairs(makeImpls(drainHashSize)) do
 		local base = Date.CentiSecond()
 		local timers = buildTimers(n, base, function(i) return intervals[i] end)
 
@@ -259,6 +280,7 @@ local function benchRepeat(n)
 		math.randomseed(SEED) -- 每种实现用完全相同的 timer 群体，保证公平
 		local base = Date.CentiSecond()
 		local timers = buildRepeatTimers(n, base)
+		sortByNextTs(timers) -- 按 next_ts 入队，满足 SEQUENCE 同组升序前提（其它实现不受影响）
 
 		collectgarbage("collect")
 		local memBefore = collectgarbage("count")
@@ -303,6 +325,85 @@ local function benchRepeat(n)
 	end
 end
 
+--==========================================================================--
+-- Benchmark 4: distinct interval 种类数敏感性（固定 N，全 repeat，稳态运行）
+-- 仅改变“不同 interval 的数量”，触发频率近似恒定，单独放大“分组数”的影响：
+--   SEQUENCE     分组数 = 种类数 => 每 tick 遍历成本随种类数线性上升（退化点）
+--   其它实现      按时间分桶/排序，与种类数无关 => 应基本持平
+--==========================================================================--
+local function makeIntervalSet(kinds)
+	-- 在固定带 [KINDS_LO, KINDS_LO+KINDS_SPAN] 内均匀取 kinds 个互异值
+	-- 带宽固定 => 平均 interval 近似不变 => 各 kinds 下总触发次数可比
+	local set = {}
+	for j = 1, kinds do
+		set[j] = KINDS_LO + (j - 1) * KINDS_SPAN // kinds
+	end
+	return set
+end
+
+local function benchKinds(kinds)
+	local n = KINDS_FIXED_N
+	Log.InfoF("===== INTERVAL KINDS  N=%d  kinds=%d  sim=%.0fs tick=%dms =====",
+		n, kinds, SIM_CENTISEC / 100, TICK_PERIOD * 10)
+	Log.InfoF("%s%s%s%s%s%s",
+		pad("impl", 16), pad("push(ms)", 12), pad("mem(KB)", 12),
+		pad("sim(ms)", 12), pad("fires", 12), pad("us/call", 12))
+
+	local calls = SIM_CENTISEC // TICK_PERIOD
+	local set = makeIntervalSet(kinds)
+
+	for _, impl in ipairs(makeImpls()) do
+		math.randomseed(SEED) -- 每种实现用完全相同的 timer 群体
+		local base = Date.CentiSecond()
+		local timers = {}
+		for i = 1, n do
+			local interval = set[math.random(kinds)]
+			local seq = (i << SHIFT) | TAG_USER | TAG_REPEAT
+			local firstDelay = math.random(1, interval)
+			timers[i] = { [K_NEXT_TS] = base + firstDelay, [K_SEQ] = seq, [K_INTERVAL] = interval, [K_FUNC] = NOOP }
+		end
+		sortByNextTs(timers) -- 按 next_ts 入队，满足 SEQUENCE 同组升序前提（其它实现不受影响）
+
+		collectgarbage("collect")
+		local memBefore = collectgarbage("count")
+		collectgarbage("stop")
+
+		local mgr = newFakeManager()
+		local inst = impl.new()
+
+		local t0 = hpc()
+		for i = 1, n do
+			inst:Push(timers[i])
+		end
+		local pushMs = (hpc() - t0) / 1e6
+
+		collectgarbage("restart")
+		collectgarbage("collect")
+		local memKB = collectgarbage("count") - memBefore
+
+		fireCount = 0
+		t0 = hpc()
+		for k = 1, calls do
+			inst:OnTick(mgr, base + k * TICK_PERIOD)
+		end
+		local simMs = (hpc() - t0) / 1e6
+		local usPerCall = simMs * 1e3 / calls
+
+		Log.InfoF("%s%s%s%s%s%s",
+			pad(impl.name, 16),
+			pad(string.format("%.3f", pushMs), 12),
+			pad(string.format("%.1f", memKB), 12),
+			pad(string.format("%.3f", simMs), 12),
+			pad(fireCount, 12),
+			pad(string.format("%.3f", usPerCall), 12))
+
+		timers = nil
+		inst = nil
+		mgr = nil
+		collectgarbage("collect")
+	end
+end
+
 Skynet.start(function()
 	Log.InfoF("################ TIMER IMPL BENCHMARK BEGIN ################")
 	Log.InfoF("ACCURACY=%d HASH_SIZE=%d TW_LEVELS={%s}",
@@ -317,6 +418,9 @@ Skynet.start(function()
 	end
 	for _, n in ipairs(REPEAT_NS) do
 		benchRepeat(n)
+	end
+	for _, kinds in ipairs(KINDS_LIST) do
+		benchKinds(kinds)
 	end
 
 	restoreFork()

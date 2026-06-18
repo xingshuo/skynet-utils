@@ -11,6 +11,8 @@ local TIMER_KEY_FUNC = assert(Const.TIMER_KEY_FUNC)
 local MAX_TS = math.maxinteger
 
 -- 基于触发间隔分组队列管理用户定时器
+-- 注：repeat 稳态下分组队列的 h/t 会持续右移，[1..h-1] 置 nil 的死前缀由 Lua 的
+-- rehash 回收（数组/哈希段按活跃 key 数收敛，不会无界增长），无需手动整理。
 ---@class CSequenceImpl
 local CSequenceImpl = DefClass("timer.CSequenceImpl")
 
@@ -33,6 +35,9 @@ function CSequenceImpl:Push(timer)
 		queue.t = t
 		queue[t] = timer
 	end
+end
+
+function CSequenceImpl:OnRemove(timer)
 end
 
 function CSequenceImpl:OnTick(manager, now)

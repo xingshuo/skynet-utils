@@ -20,7 +20,7 @@ function CHashedWheelImpl:_Ctor(accuracy, size)
 	self.__size = size -- bucket size
 	self.__buckets = {}
 	for i = 1, size do
-		self.__buckets[i] = {h = 1, t = 0}
+		self.__buckets[i] = {t = 0} -- FIFO 桶：drain 时整体前移并复位，无需常驻 head 字段
 	end
 	self.__tick = Date.CentiSecond() // accuracy
 	self.__pendings = {n = 0}
@@ -39,22 +39,22 @@ function CHashedWheelImpl:Push(timer)
 	bucket[t] = timer
 end
 
+function CHashedWheelImpl:OnRemove(timer)
+end
+
 function CHashedWheelImpl:OnTick(manager, now)
-	local elapse = now - self.__tick * self.__accuracy
-	for i = 1, elapse // self.__accuracy do
-		local index = self.__tick % self.__size + 1
-		local bucket = self.__buckets[index]
+	local size = self.__size
+	local buckets = self.__buckets
+	local pendings = self.__pendings
+	local tick = self.__tick
+	local ticks = (now - tick * self.__accuracy) // self.__accuracy
+	for _ = 1, ticks do
+		local bucket = buckets[tick % size + 1]
+		local tail = bucket.t -- 快照桶长；幸存者前移到 [1..t]，fork 延迟执行，期间不会有新 Push
 		local t = 0
-		while true do
-			if bucket.h == bucket.t + 1 then -- traverse to end
-				bucket.h = 1
-				bucket.t = t
-				break
-			end
-			local h = bucket.h
+		for h = 1, tail do
 			local timer = bucket[h]
 			bucket[h] = nil
-			bucket.h = h + 1
 			local seq = timer[TIMER_KEY_SEQ]
 			local func = timer[TIMER_KEY_FUNC]
 			if not func then -- removed
@@ -66,9 +66,9 @@ function CHashedWheelImpl:OnTick(manager, now)
 			else
 				if (seq & TIMER_TAG_REPEAT) == TIMER_TAG_REPEAT then
 					timer[TIMER_KEY_NEXT_TS] = now + timer[TIMER_KEY_INTERVAL]
-					local pn = self.__pendings.n + 1
-					self.__pendings.n = pn
-					self.__pendings[pn] = timer
+					local pn = pendings.n + 1
+					pendings.n = pn
+					pendings[pn] = timer
 				else
 					manager.__timers[seq] = nil
 				end
@@ -76,15 +76,17 @@ function CHashedWheelImpl:OnTick(manager, now)
 				Skynet.fork(func)
 			end
 		end
-		self.__tick = self.__tick + 1
+		bucket.t = t
+		tick = tick + 1
 	end
+	self.__tick = tick
 
-	for i = 1, self.__pendings.n do
-		local timer = self.__pendings[i]
-		self.__pendings[i] = nil
+	for i = 1, pendings.n do
+		local timer = pendings[i]
+		pendings[i] = nil
 		self:Push(timer)
 	end
-	self.__pendings.n = 0
+	pendings.n = 0
 end
 
 local M = {}

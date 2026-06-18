@@ -12,6 +12,10 @@ local TIMER_KEY_SEQ = assert(Const.TIMER_KEY_SEQ)
 local TIMER_KEY_INTERVAL = assert(Const.TIMER_KEY_INTERVAL)
 local TIMER_KEY_FUNC = assert(Const.TIMER_KEY_FUNC)
 
+-- 节点在轮中的绝对到期 tick。用字符串键而非整数下标：timer 表本是 {[1..4]} 的纯数组段，
+-- 加整数 [5] 会让 Lua 数组段按 pow2 撑到 8（浪费 3 槽）；字符串键只多一个 hash node，更省。
+local EXPIRE_KEY = "expire"
+
 -- 基于多层时间轮管理用户定时器
 ---@class CTimingWheelImpl
 local CTimingWheelImpl = DefClass("timer.CTimingWheelImpl")
@@ -21,7 +25,7 @@ local CTimingWheelImpl = DefClass("timer.CTimingWheelImpl")
 function CTimingWheelImpl:_Ctor(accuracy, levelList)
 	assert(accuracy >= 1 and accuracy <= 100, accuracy)
 	self.__accuracy = accuracy
-	self.__tw = TimingWheel.CTimingWheel:New(levelList)
+	self.__tw = TimingWheel.CTimingWheel:New(levelList, EXPIRE_KEY)
 	self.__ts = Date.CentiSecond()
 	self.__timeouts = {}
 	self.__pendings = {n = 0}
@@ -31,6 +35,9 @@ function CTimingWheelImpl:Push(timer)
 	local interval = max(timer[TIMER_KEY_NEXT_TS] - self.__ts, 1)
 	local delta = (interval - 1)//self.__accuracy + 1
 	self.__tw:Push(timer, delta)
+end
+
+function CTimingWheelImpl:OnRemove(timer)
 end
 
 function CTimingWheelImpl:OnTick(manager, now)

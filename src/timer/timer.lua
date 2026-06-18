@@ -30,6 +30,9 @@ local ITimerImpl = {}
 function ITimerImpl:Push(timer)
 end
 
+function ITimerImpl:OnRemove(timer)
+end
+
 function ITimerImpl:OnTick(manager, now)
 end
 
@@ -119,6 +122,7 @@ function CTimerManager:StopTimer(seq)
 	end
 
 	if (timer[TIMER_KEY_SEQ] & TIMER_TAG_USER) == TIMER_TAG_USER then
+		self.__impl:OnRemove(timer)
 		timer[TIMER_KEY_FUNC] = nil -- 提前释放闭包，防止内存泄漏
 	end
 	self.__timers[seq] = false -- 释放timer对象，但保留seq占位，以防对应timeout触发前，seq分配给其他timer

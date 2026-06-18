@@ -1,9 +1,6 @@
 local assert = assert
 local ipairs = ipairs
 
-local SESSION_IDX = 1
-local EXPIRE_IDX = 2
-
 ---@class CLevelWheel
 local CLevelWheel = DefClass("CLevelWheel")
 
@@ -36,9 +33,13 @@ end
 ---@class CTimingWheel
 local CTimingWheel = DefClass("CTimingWheel")
 
-function CTimingWheel:_Ctor(levelList)
+-- expireIdx：节点须在该字段下标携带自己的绝对到期 tick，容器据此做级联重挂载。
+-- 由调用方拥有节点和该字段，容器直接存节点引用，免去包装表的分配。
+function CTimingWheel:_Ctor(levelList, expireIdx)
 	local n = #levelList
 	assert(n > 0)
+	assert(expireIdx, "expireIdx required")
+	self.__expire_idx = expireIdx
 	self.__wheels = {}
 	for i, size in ipairs(levelList) do
 		assert(size > 0)
@@ -56,7 +57,7 @@ function CTimingWheel:_Ctor(levelList)
 end
 
 function CTimingWheel:_pushNode(node)
-	local delta = node[EXPIRE_IDX] - self.__tick
+	local delta = node[self.__expire_idx] - self.__tick
 	assert(delta > 0)
 	local expire = self.__wheels[1].__next + delta - 1
 	for i, wheel in ipairs(self.__wheels) do
@@ -99,13 +100,10 @@ function CTimingWheel:_shift()
 	end
 end
 
-function CTimingWheel:Push(session, delta)
+-- node 即调用方对象本身（无包装表）；容器把绝对到期 tick 写入 node[expireIdx]。
+function CTimingWheel:Push(node, delta)
 	assert(delta > 0)
-	local expire = self.__tick + delta
-	local node = {
-		session,
-		expire
-	}
+	node[self.__expire_idx] = self.__tick + delta
 	return self:_pushNode(node)
 end
 
@@ -116,7 +114,7 @@ function CTimingWheel:Update(outList)
 		return 0
 	end
 	for i, node in ipairs(timeouts) do
-		outList[i] = node[SESSION_IDX]
+		outList[i] = node
 	end
 	return #timeouts
 end
