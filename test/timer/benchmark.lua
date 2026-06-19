@@ -2,7 +2,7 @@ local Skynet = require "skynet"
 local Const = require "timer.const"
 local HashedWheel = require "timer.implement.hashed_wheel"
 local HeapQueue = require "timer.implement.heap_queue"
-local Sequence = require "timer.implement.sequence"
+local IntervalQueue = require "timer.implement.interval_queue"
 local Simple = require "timer.implement.simple"
 local TimingWheel = require "timer.implement.timing_wheel"
 local Log = require "log"
@@ -17,7 +17,6 @@ local K_INTERVAL = assert(Const.TIMER_KEY_INTERVAL)
 local K_FUNC = assert(Const.TIMER_KEY_FUNC)
 local TAG_USER = assert(Const.TIMER_TAG_USER)
 local TAG_REPEAT = assert(Const.TIMER_TAG_REPEAT)
-local SHIFT = assert(Const.TIMER_TYPE_SHIFT)
 
 --==========================================================================--
 -- 可调参数
@@ -44,7 +43,7 @@ local SHORT_INTERVALS = {300, 500, 1000, 1200, 1500, 2000, 3000}    -- 3/5/10/12
 local LONG_INTERVALS = {6000, 30000, 60000, 360000}                 -- 1/5/10/60 min
 
 -- “不同 interval 种类数”敏感性 benchmark：固定 N，扫描 distinct interval 数量。
--- 用于量化 SEQUENCE 随分组数增长的退化拐点（其它实现按时间分桶，应基本持平）。
+-- 用于量化 INTERVAL_QUEUE 随分组数增长的退化拐点（其它实现按时间分桶，应基本持平）。
 local KINDS_FIXED_N = 100000        -- 固定 timer 总数
 local KINDS_LIST = {11, 100, 1000}  -- distinct interval 种类数
 local KINDS_LO = 200                -- interval 取值带 [LO, LO+SPAN]（厘秒），2s..22s
@@ -78,7 +77,7 @@ local function makeImpls(hashSize)
 	return {
 		{ name = "SIMPLE", new = function() return Simple.CSimpleImpl:New() end },
 		{ name = "HEAP_QUEUE", new = function() return HeapQueue.CHeapqImpl:New() end },
-		{ name = "SEQUENCE", new = function() return Sequence.CSequenceImpl:New() end },
+		{ name = "INTERVAL_QUEUE", new = function() return IntervalQueue.CIntervalQueueImpl:New() end },
 		{ name = "HASHED_WHEEL", new = function() return HashedWheel.CHashedWheelImpl:New(ACCURACY, hashSize) end },
 		{ name = "TIMING_WHEEL", new = function() return TimingWheel.CTimingWheelImpl:New(ACCURACY, TW_LEVELS) end },
 	}
@@ -89,7 +88,7 @@ local function buildTimers(n, base, intervalFn)
 	local timers = {}
 	for i = 1, n do
 		local interval = intervalFn(i)
-		local seq = (i << SHIFT) | TAG_USER -- 一次性用户 timer，seq 唯一
+		local seq = i | TAG_USER -- i 即 session（低 32 位），一次性用户 timer，seq 唯一
 		timers[i] = { [K_NEXT_TS] = base + interval, [K_SEQ] = seq, [K_INTERVAL] = interval, [K_FUNC] = NOOP }
 	end
 	return timers
@@ -102,7 +101,7 @@ local function pad(s, w)
 end
 
 -- 按 next_ts 升序排列入队顺序。
--- SEQUENCE 的前提是「同一 interval 分组内队列按 next_ts 单调」（生产中 timer 创建即入队，
+-- INTERVAL_QUEUE 的前提是「同一 interval 分组内队列按 next_ts 单调」（生产中 timer 创建即入队，
 -- 天然满足）；基准用随机初始相位会破坏该前提，导致同组到期项被队头挡住、推迟触发而少计 fires。
 -- 全局按 next_ts 排序后，每个 interval 子组也随之升序，前提成立；其它实现 order-insensitive，不受影响。
 local function sortByNextTs(timers)
@@ -179,7 +178,7 @@ end
 -- Benchmark 2: Idle OnTick（无任何 timer 到期，纯空转开销）
 -- 用“互不相同的远期 interval”，暴露各结构每 tick 的固定遍历成本：
 --   SIMPLE     ~ O(N)/tick
---   SEQUENCE   ~ O(#groups)/tick （此处 N 个不同 interval => N 个组）
+--   INTERVAL_QUEUE   ~ O(#groups)/tick （此处 N 个不同 interval => N 个组）
 --   HASHED_WHEEL ~ O(N/size)/tick （rounds 记账）
 --   HEAP_QUEUE ~ O(1)/tick
 --   TIMING_WHEEL ~ O(levels)/tick（含周期性进位）
@@ -246,7 +245,7 @@ end
 -- 衡量“持续重挂载”下的吞吐与每次 OnTick 开销：
 --   HEAP_QUEUE   每次触发 O(log n) Replace
 --   TIMING_WHEEL 每次重挂载分配一个包装 node（GC 压力）
---   SEQUENCE     仅 ~11 个不同 interval => 极少分组，是其最佳场景
+--   INTERVAL_QUEUE     仅 ~11 个不同 interval => 极少分组，是其最佳场景
 --   HASHED_WHEEL 长期 timer 每圈都要做 rounds 记账
 --   SIMPLE       每次 OnTick 恒为 O(N)
 -- 初始相位随机打散，避免同周期 timer 在同一 tick 齐射。
@@ -260,7 +259,7 @@ local function buildRepeatTimers(n, base)
 		else
 			interval = SHORT_INTERVALS[math.random(#SHORT_INTERVALS)]
 		end
-		local seq = (i << SHIFT) | TAG_USER | TAG_REPEAT
+		local seq = i | TAG_USER | TAG_REPEAT
 		local firstDelay = math.random(1, interval) -- 随机初始相位
 		timers[i] = { [K_NEXT_TS] = base + firstDelay, [K_SEQ] = seq, [K_INTERVAL] = interval, [K_FUNC] = NOOP }
 	end
@@ -280,7 +279,7 @@ local function benchRepeat(n)
 		math.randomseed(SEED) -- 每种实现用完全相同的 timer 群体，保证公平
 		local base = Date.CentiSecond()
 		local timers = buildRepeatTimers(n, base)
-		sortByNextTs(timers) -- 按 next_ts 入队，满足 SEQUENCE 同组升序前提（其它实现不受影响）
+		sortByNextTs(timers) -- 按 next_ts 入队，满足 INTERVAL_QUEUE 同组升序前提（其它实现不受影响）
 
 		collectgarbage("collect")
 		local memBefore = collectgarbage("count")
@@ -328,7 +327,7 @@ end
 --==========================================================================--
 -- Benchmark 4: distinct interval 种类数敏感性（固定 N，全 repeat，稳态运行）
 -- 仅改变“不同 interval 的数量”，触发频率近似恒定，单独放大“分组数”的影响：
---   SEQUENCE     分组数 = 种类数 => 每 tick 遍历成本随种类数线性上升（退化点）
+--   INTERVAL_QUEUE     分组数 = 种类数 => 每 tick 遍历成本随种类数线性上升（退化点）
 --   其它实现      按时间分桶/排序，与种类数无关 => 应基本持平
 --==========================================================================--
 local function makeIntervalSet(kinds)
@@ -358,11 +357,11 @@ local function benchKinds(kinds)
 		local timers = {}
 		for i = 1, n do
 			local interval = set[math.random(kinds)]
-			local seq = (i << SHIFT) | TAG_USER | TAG_REPEAT
+			local seq = i | TAG_USER | TAG_REPEAT
 			local firstDelay = math.random(1, interval)
 			timers[i] = { [K_NEXT_TS] = base + firstDelay, [K_SEQ] = seq, [K_INTERVAL] = interval, [K_FUNC] = NOOP }
 		end
-		sortByNextTs(timers) -- 按 next_ts 入队，满足 SEQUENCE 同组升序前提（其它实现不受影响）
+		sortByNextTs(timers) -- 按 next_ts 入队，满足 INTERVAL_QUEUE 同组升序前提（其它实现不受影响）
 
 		collectgarbage("collect")
 		local memBefore = collectgarbage("count")

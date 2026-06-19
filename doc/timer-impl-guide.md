@@ -12,25 +12,25 @@
 ```
 定时器以短期 repeat 为主(技能CD/buff/战斗tick)?
 ├─ 是(典型游戏)
-│   ├─ 活跃定时器 < ~5万,且 interval 种类少(<50)   → SEQUENCE      ← 默认
+│   ├─ 活跃定时器 < ~5万,且 interval 种类少(<50)   → INTERVAL_QUEUE  ← 默认
 │   ├─ 活跃定时器 ≥ ~5万,或 interval 种类可能涨到上百 → HASHED_WHEEL
 │   └─ 内存极度敏感 + 超时跨度很大(分钟~小时混合)   → TIMING_WHEEL
 └─ 否
     ├─ 海量散布的一次性到点任务(离线奖励/活动开关)  → HASHED 或 SIMPLE(批量 drain)
-    └─ 远期稀疏长定时器为主(很少触发)              → SEQUENCE / HEAP(idle 近乎免费)
+    └─ 远期稀疏长定时器为主(很少触发)              → INTERVAL_QUEUE / HEAP(idle 近乎免费)
 ```
 
 ## 二、实测依据
 
 **稳态 repeat 单价（us / 每次 OnTick,越低越好）**
-| N | SEQUENCE | HASHED | TIMING | HEAP | SIMPLE |
+| N | INTERVAL_QUEUE | HASHED | TIMING | HEAP | SIMPLE |
 |---|---|---|---|---|---|
 | 1k | **2.5** | 3.1 | 8.4 | 6.1 | 33 |
 | 10k | **17.0** | 18.8 | 62 | 77 | 364 |
 | 100k | 265 | **234** | 663 | 1357 | 3845 |
 
 **interval 种类敏感性（N=100k,us/OnTick）**
-| 种类 | SEQUENCE | HASHED |
+| 种类 | INTERVAL_QUEUE | HASHED |
 |---|---|---|
 | 11 | **262** | 284 |
 | 100 | 682 | **369** |
@@ -44,7 +44,7 @@
 
 ## 三、各实现速查卡
 
-### SEQUENCE —— 游戏默认首选
+### INTERVAL_QUEUE —— 游戏默认首选
 - **选它**：短期 repeat 为主、interval 种类少（技能/buff 就那十几种）、N 在十万以内。
 - **优势**：小/中规模单价最低,idle O(1) 近免费,内存省,无需调参。
 - **避免**：interval 种类涨到上百（k100 退化到 682）。
@@ -72,14 +72,14 @@
 
 ## 四、落地建议
 
-1. **不确定就上 SEQUENCE** —— 游戏 90% 的定时器是少种类短 repeat,它在该区间单价最低、零调参、内存省。
+1. **不确定就上 INTERVAL_QUEUE** —— 游戏 90% 的定时器是少种类短 repeat,它在该区间单价最低、零调参、内存省。
 2. **单服活跃定时器破 5 万,或玩法引入大量互异时长**,切 HASHED;注意远期定时器别堆太多（idle 成本）。
-3. **SEQUENCE 与 HASHED 在 ~11 种类 / 10 万级别已基本打平**（262 vs 284 / 265 vs 234）,互为备选,按"是否怕种类增长 + 是否有大量 idle 定时器"二选一。
+3. **INTERVAL_QUEUE 与 HASHED 在 ~11 种类 / 10 万级别已基本打平**（262 vs 284 / 265 vs 234）,互为备选,按"是否怕种类增长 + 是否有大量 idle 定时器"二选一。
 4. HASHED 的 `HASH_SIZE` 按"绝大多数 interval / accuracy"量级设,覆盖热点区间让 rounds 趋近 0。
 
 ## 五、复杂度速查
 
-| | SIMPLE | HEAP | SEQUENCE | HASHED | TIMING |
+| | SIMPLE | HEAP | INTERVAL_QUEUE | HASHED | TIMING |
 |---|---|---|---|---|---|
 | Push | O(1) | O(log n) | O(1)¹ | O(1) | O(1) |
 | 每次触发（OnTick 内重挂载） | — | O(log n) | O(1) | O(1) | O(1) |

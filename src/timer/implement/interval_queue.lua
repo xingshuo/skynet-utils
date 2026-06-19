@@ -10,18 +10,19 @@ local TIMER_KEY_FUNC = assert(Const.TIMER_KEY_FUNC)
 
 local MAX_TS = math.maxinteger
 
--- 基于触发间隔分组队列管理用户定时器
+-- 按触发间隔(interval)分组的 FIFO 队列管理用户定时器：每个 interval 一条队列，
+-- 同 interval 的 timer 按启动顺序入队即按到期时间升序，故每 tick 只需检查各队队头。
 -- 注：repeat 稳态下分组队列的 h/t 会持续右移，[1..h-1] 置 nil 的死前缀由 Lua 的
 -- rehash 回收（数组/哈希段按活跃 key 数收敛，不会无界增长），无需手动整理。
----@class CSequenceImpl
-local CSequenceImpl = DefClass("timer.CSequenceImpl")
+---@class CIntervalQueueImpl
+local CIntervalQueueImpl = DefClass("timer.CIntervalQueueImpl")
 
-function CSequenceImpl:_Ctor()
+function CIntervalQueueImpl:_Ctor()
 	self.__groups = {} -- interval : timer queue
 	self.__min_ts = MAX_TS
 end
 
-function CSequenceImpl:Push(timer)
+function CIntervalQueueImpl:Push(timer)
 	local interval = timer[TIMER_KEY_INTERVAL]
 	local queue = self.__groups[interval]
 	if not queue then
@@ -37,10 +38,10 @@ function CSequenceImpl:Push(timer)
 	end
 end
 
-function CSequenceImpl:OnRemove(timer)
+function CIntervalQueueImpl:OnRemove(timer)
 end
 
-function CSequenceImpl:OnTick(manager, now)
+function CIntervalQueueImpl:OnTick(manager, now)
 	local min_ts = self.__min_ts
 	if min_ts > now then
 		return
@@ -94,6 +95,6 @@ end
 
 local M = {}
 
-M.CSequenceImpl = CSequenceImpl
+M.CIntervalQueueImpl = CIntervalQueueImpl
 
 return M

@@ -27,7 +27,8 @@ function CHashedWheelImpl:_Ctor(accuracy, size)
 end
 
 function CHashedWheelImpl:Push(timer)
-	local deadlineTick = timer[TIMER_KEY_NEXT_TS] // self.__accuracy
+	-- 向上取整：在 next_ts 之后的第一个 tick 边界触发，保证“绝不提前”
+	local deadlineTick = (timer[TIMER_KEY_NEXT_TS] + self.__accuracy - 1) // self.__accuracy
 	if deadlineTick <= self.__tick then
 		deadlineTick = self.__tick + 1  -- 至少下一 tick 触发，避免绕满一圈
 	end
@@ -65,7 +66,6 @@ function CHashedWheelImpl:OnTick(manager, now)
 				bucket[t] = timer
 			else
 				if (seq & TIMER_TAG_REPEAT) == TIMER_TAG_REPEAT then
-					timer[TIMER_KEY_NEXT_TS] = now + timer[TIMER_KEY_INTERVAL]
 					local pn = pendings.n + 1
 					pendings.n = pn
 					pendings[pn] = timer
@@ -81,8 +81,12 @@ function CHashedWheelImpl:OnTick(manager, now)
 	end
 	self.__tick = tick
 
+	-- 重挂载：锚定到当前轮子刻度(tick*accuracy)而非陈旧 next_ts 或偏晚的 now。
+	-- 配合"单次 OnTick 内每个定时器至多触发一次"，now 大跳时直接重新对齐到当前、
+	-- 跳过欠账周期，既不累积漂移也不会逐帧补帧。
 	for i = 1, pendings.n do
 		local timer = pendings[i]
+		timer[TIMER_KEY_NEXT_TS] = tick * self.__accuracy + timer[TIMER_KEY_INTERVAL]
 		pendings[i] = nil
 		self:Push(timer)
 	end

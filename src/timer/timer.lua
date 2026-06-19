@@ -2,7 +2,7 @@ local Skynet = require "skynet"
 local Const = require "timer.const"
 local HashedWheel = require "timer.implement.hashed_wheel"
 local HeapQueue = require "timer.implement.heap_queue"
-local Sequence = require "timer.implement.sequence"
+local IntervalQueue = require "timer.implement.interval_queue"
 local Simple = require "timer.implement.simple"
 local TimingWheel = require "timer.implement.timing_wheel"
 local ClassFactory = require "infra.class_factory"
@@ -22,8 +22,7 @@ local TIMER_KEY_SEQ = assert(Const.TIMER_KEY_SEQ)
 local TIMER_KEY_INTERVAL = assert(Const.TIMER_KEY_INTERVAL)
 local TIMER_KEY_FUNC = assert(Const.TIMER_KEY_FUNC)
 
-local TIMER_SESSION_MAX = assert(Const.TIMER_SESSION_MAX)
-local TIMER_TYPE_SHIFT = assert(Const.TIMER_TYPE_SHIFT)
+local TIMER_SESSION_MASK = assert(Const.TIMER_SESSION_MASK)
 
 local ITimerImpl = {}
 
@@ -46,8 +45,8 @@ function CTimerManager:_Ctor(mode, ...)
 		self.__impl = HashedWheel.CHashedWheelImpl:New(...)
 	elseif mode == TIMER_IMPL.HEAP_QUEUE then
 		self.__impl = HeapQueue.CHeapqImpl:New(...)
-	elseif mode == TIMER_IMPL.SEQUENCE then
-		self.__impl = Sequence.CSequenceImpl:New(...)
+	elseif mode == TIMER_IMPL.INTERVAL_QUEUE then
+		self.__impl = IntervalQueue.CIntervalQueueImpl:New(...)
 	elseif mode == TIMER_IMPL.SIMPLE then
 		self.__impl = Simple.CSimpleImpl:New(...)
 	elseif mode == TIMER_IMPL.TIMING_WHEEL then
@@ -63,10 +62,10 @@ function CTimerManager:_newSeq(tags)
 	local seq
 	repeat
 		session = session + 1
-		if session > TIMER_SESSION_MAX then
+		if session > TIMER_SESSION_MASK then
 			session = 1
 		end
-		seq = (session << TIMER_TYPE_SHIFT) | tags
+		seq = session | tags
 		if self.__timers[seq] == nil then
 			break
 		end

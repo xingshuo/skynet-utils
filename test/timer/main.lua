@@ -99,7 +99,7 @@ end
 Skynet.start(function()
 	newTimersAndRun(10, {{5, 3}, 100, 300, 500, 600, {610, 2}, 700, 770, 800, 1200, 1220}, TIMER_IMPL.HASHED_WHEEL, 10, 60)
 	newTimersAndRun(10, {{5, 3}, 100, 300, 500, 600, {610, 2}, 700, 770, 800, 1200, 1220}, TIMER_IMPL.HEAP_QUEUE)
-	newTimersAndRun(10, {{5, 3}, 100, 300, 500, 600, {610, 2}, 700, 770, 800, 1200, 1220}, TIMER_IMPL.SEQUENCE)
+	newTimersAndRun(10, {{5, 3}, 100, 300, 500, 600, {610, 2}, 700, 770, 800, 1200, 1220}, TIMER_IMPL.INTERVAL_QUEUE)
 	newTimersAndRun(10, {{5, 3}, 100, 300, 500, 600, {610, 2}, 700, 770, 800, 1200, 1220}, TIMER_IMPL.SIMPLE)
 	newTimersAndRun(10, {{5, 3}, 100, 300, 500, 600, {610, 2}, 700, 770, 800, 1200, 1220}, TIMER_IMPL.TIMING_WHEEL, 10, {30, 4})
 	-- 系统定时器与 impl 无关，任选一种 mode 构造 manager 即可
