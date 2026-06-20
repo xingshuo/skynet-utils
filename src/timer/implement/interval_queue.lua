@@ -9,6 +9,7 @@ local TIMER_KEY_INTERVAL = assert(Const.TIMER_KEY_INTERVAL)
 local TIMER_KEY_FUNC = assert(Const.TIMER_KEY_FUNC)
 
 local MAX_TS = math.maxinteger
+local pairs = pairs
 
 -- 按触发间隔(interval)分组的 FIFO 队列管理用户定时器：每个 interval 一条队列，
 -- 同 interval 的 timer 按启动顺序入队即按到期时间升序，故每 tick 只需检查各队队头。
@@ -48,10 +49,11 @@ function CIntervalQueueImpl:OnTick(manager, now)
 	end
 
 	min_ts = MAX_TS
-	for interval, queue in pairs(self.__groups) do
+	local groups = self.__groups
+	for interval, queue in pairs(groups) do
 		while true do
 			if queue.h == queue.t + 1 then -- queue empty
-				self.__groups[interval] = nil
+				groups[interval] = nil
 				break
 			end
 			local h = queue.h

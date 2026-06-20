@@ -9,6 +9,7 @@ local TIMER_KEY_INTERVAL = assert(Const.TIMER_KEY_INTERVAL)
 local TIMER_KEY_FUNC = assert(Const.TIMER_KEY_FUNC)
 
 local MAX_TS = math.maxinteger
+local pairs = pairs
 
 -- 基于全量遍历管理用户定时器
 ---@class CSimpleImpl
