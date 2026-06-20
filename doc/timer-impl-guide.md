@@ -25,56 +25,56 @@
 **稳态 repeat 单价（us / 每次 OnTick,越低越好）**
 | N | INTERVAL_QUEUE | HASHED | TIMING | HEAP | SIMPLE |
 |---|---|---|---|---|---|
-| 1k | **2.5** | 3.1 | 8.4 | 6.1 | 33 |
-| 10k | **17.0** | 18.8 | 62 | 77 | 364 |
-| 100k | 265 | **234** | 663 | 1357 | 3845 |
+| 1k | **2.6** | 2.7 | 8.7 | 6.6 | 33 |
+| 10k | **14.9** | 20.3 | 63 | 85 | 331 |
+| 100k | 260 | **254** | 690 | 1471 | 3282 |
 
 **interval 种类敏感性（N=100k,us/OnTick）**
 | 种类 | INTERVAL_QUEUE | HASHED |
 |---|---|---|
-| 11 | **262** | 284 |
-| 100 | 682 | **369** |
-| 1000 | 426 | **352** |
+| 11 | **286** | 319 |
+| 100 | 717 | **370** |
+| 1000 | 482 | **415** |
 
-**内存（game 100k,KB）**：TIMING 1489 < HASHED 1688 < SEQ 1922 < HEAP 2048 < SIMPLE 3072
+**内存（game 100k,KB）**：TIMING 1489 < HASHED 1685 < INTERVAL_QUEUE 1922 < HEAP 2048 < SIMPLE 3072
 
-**空转开销（idle 100k,us/tick）**：SIMPLE/SEQ 0.03 < HEAP 0.045 < TIMING 0.22 ≪ **HASHED 3.66**
+**空转开销（idle 100k,us/tick）**：SIMPLE/INTERVAL_QUEUE 0.028 < HEAP 0.044 < TIMING 0.24 ≪ **HASHED 3.60**
 
-**一次性批量到期（drain 1M,ms）**：SIMPLE 68 < HASHED 274 < SEQ 319 < TIMING 730 ≪ HEAP 3192
+**一次性批量到期（drain 1M,ms）**：SIMPLE 70 < HASHED 281 < INTERVAL_QUEUE 311 < TIMING 762 ≪ HEAP 3082
 
 ## 三、各实现速查卡
 
 ### INTERVAL_QUEUE —— 游戏默认首选
 - **选它**：短期 repeat 为主、interval 种类少（技能/buff 就那十几种）、N 在十万以内。
 - **优势**：小/中规模单价最低,idle O(1) 近免费,内存省,无需调参。
-- **避免**：interval 种类涨到上百（k100 退化到 682）。
+- **避免**：interval 种类涨到上百（k100 退化到 717）。
 - **前提**：同一 interval 的 timer 按创建顺序入队（真实 manager 天然满足:创建即 `now+interval`,同 interval 即按 `next_ts` 升序）。
 
 ### HASHED_WHEEL —— 大规模 / 多种类的稳健选择
-- **选它**：活跃定时器 ≥ ~5万,或 interval 种类不可控（对种类不敏感:k100/k1000 稳定 ~350-370）。
-- **优势**：100k 稳态单价最低（234）,drain 快。
+- **选它**：活跃定时器 ≥ ~5万,或 interval 种类不可控（对种类不敏感:k11/k100/k1000 ≈ 319/370/415）。
+- **优势**：100k 稳态单价最低（254）,drain 快。
 - **代价**：
   - idle 随 N 退化（O(N/size),100k 时 3.66us/tick）——远期稀疏定时器多时别用;
   - 大跨度需调大 `HASH_SIZE`,换桶内存。
 
 ### TIMING_WHEEL —— 内存敏感 + 超大跨度
 - **选它**：超时跨度从秒到小时混合、对内存敏感。
-- **优势**：内存全场最低（1489KB）,GC 包袱已优化掉（节点不再包装,直接存 timer + 字符串键存到期 tick）,CPU 中游（663,优于 HEAP/SIMPLE）。
-- **避免**：纯高频 repeat（单价是 SEQ/HASHED 的 ~3 倍）。
+- **优势**：内存全场最低（1489KB）,GC 包袱已优化掉（节点不再包装,直接存 timer + 字符串键存到期 tick）,CPU 中游（690,优于 HEAP/SIMPLE）。
+- **避免**：纯高频 repeat（单价是 INTERVAL_QUEUE/HASHED 的 ~3 倍）。
 
 ### HEAP_QUEUE —— 通用兜底
 - **选它**：规模小、churn 低、要一个不挑场景的结构。
-- **避免**：高频 repeat（每次 O(log n) Replace + cache miss,100k 到 1357）、大批 drain（O(N log N) 到 3192ms）。
+- **避免**：高频 repeat（每次 O(log n) Replace + cache miss,100k 到 1471）、大批 drain（O(N log N) 到 3082ms）。
 
 ### SIMPLE —— 仅原型 / 极小 N
 - **选它**：N < ~1千、图实现简单。
-- **避免**：任何规模化稳态（O(N)/tick,100k 时 3.8ms/tick 直接爆 tick 预算）。
+- **避免**：任何规模化稳态（O(N)/tick,100k 时 3.3ms/tick 直接爆 tick 预算）。
 
 ## 四、落地建议
 
 1. **不确定就上 INTERVAL_QUEUE** —— 游戏 90% 的定时器是少种类短 repeat,它在该区间单价最低、零调参、内存省。
 2. **单服活跃定时器破 5 万,或玩法引入大量互异时长**,切 HASHED;注意远期定时器别堆太多（idle 成本）。
-3. **INTERVAL_QUEUE 与 HASHED 在 ~11 种类 / 10 万级别已基本打平**（262 vs 284 / 265 vs 234）,互为备选,按"是否怕种类增长 + 是否有大量 idle 定时器"二选一。
+3. **INTERVAL_QUEUE 与 HASHED 在 ~11 种类 / 10 万级别已基本打平**（286 vs 319 / 260 vs 254）,互为备选,按"是否怕种类增长 + 是否有大量 idle 定时器"二选一。
 4. HASHED 的 `HASH_SIZE` 按"绝大多数 interval / accuracy"量级设,覆盖热点区间让 rounds 趋近 0。
 
 ## 五、复杂度速查
