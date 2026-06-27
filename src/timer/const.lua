@@ -7,6 +7,7 @@ M.TIMER_IMPL = {
 	INTERVAL_QUEUE = 3, -- 按触发间隔分组的 FIFO 队列
 	SIMPLE = 4,
 	TIMING_WHEEL = 5, -- 多层时间轮
+	HYBRID = 6, -- 混合：按 interval 量级路由到短桶(interval_queue)/长桶(heap)
 }
 
 M.TIMER_KEY_NEXT_TS = 1

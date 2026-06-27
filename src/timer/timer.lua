@@ -5,6 +5,7 @@ local HeapQueue = require "timer.implement.heap_queue"
 local IntervalQueue = require "timer.implement.interval_queue"
 local Simple = require "timer.implement.simple"
 local TimingWheel = require "timer.implement.timing_wheel"
+local Hybrid = require "timer.implement.hybrid"
 local ClassFactory = require "infra.class_factory"
 local Log = require "log"
 local Date = require "date"
@@ -51,6 +52,8 @@ function CTimerManager:_Ctor(mode, ...)
 		self.__impl = Simple.CSimpleImpl:New(...)
 	elseif mode == TIMER_IMPL.TIMING_WHEEL then
 		self.__impl = TimingWheel.CTimingWheelImpl:New(...)
+	elseif mode == TIMER_IMPL.HYBRID then
+		self.__impl = Hybrid.CHybridImpl:New(...)
 	else
 		assert(false, mode)
 	end

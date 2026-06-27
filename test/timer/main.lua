@@ -102,6 +102,8 @@ Skynet.start(function()
 	newTimersAndRun(10, {{5, 3}, 100, 300, 500, 600, {610, 2}, 700, 770, 800, 1200, 1220}, TIMER_IMPL.INTERVAL_QUEUE)
 	newTimersAndRun(10, {{5, 3}, 100, 300, 500, 600, {610, 2}, 700, 770, 800, 1200, 1220}, TIMER_IMPL.SIMPLE)
 	newTimersAndRun(10, {{5, 3}, 100, 300, 500, 600, {610, 2}, 700, 770, 800, 1200, 1220}, TIMER_IMPL.TIMING_WHEEL, 10, {30, 4})
+	-- 混合模式：阈值 500cs，interval<=500 进短桶(interval_queue)，>500 进长桶(heap)
+	newTimersAndRun(10, {{5, 3}, 100, 300, 500, 600, {610, 2}, 700, 770, 800, 1200, 1220}, TIMER_IMPL.HYBRID, 500)
 	-- 系统定时器与 impl 无关，任选一种 mode 构造 manager 即可
 	newSysTimersAndRun(TIMER_IMPL.SIMPLE)
 	Skynet.exit()

@@ -5,6 +5,7 @@ local HeapQueue = require "timer.implement.heap_queue"
 local IntervalQueue = require "timer.implement.interval_queue"
 local Simple = require "timer.implement.simple"
 local TimingWheel = require "timer.implement.timing_wheel"
+local Hybrid = require "timer.implement.hybrid"
 local Log = require "log"
 local Date = require "date"
 
@@ -41,6 +42,10 @@ local TICK_PERIOD = 10              -- OnTick 调用周期（厘秒）= 100ms，
 local LONG_RATIO = 0.05             -- 长期定时器占比（少量）
 local SHORT_INTERVALS = {300, 500, 1000, 1200, 1500, 2000, 3000}    -- 3/5/10/12/15/20/30 s
 local LONG_INTERVALS = {6000, 30000, 60000, 360000}                 -- 1/5/10/60 min
+
+-- HYBRID 短/长分桶阈值（厘秒）：取 50s，干净隔开 SHORT_INTERVALS(<=30s) 与 LONG_INTERVALS(>=60s)，
+-- 使 GAME REPEAT 场景下短 repeat 全进 interval_queue、长 timer 全进 heap，体现双峰路由收益。
+local HYBRID_THRESHOLD = 5000
 
 -- “不同 interval 种类数”敏感性 benchmark：固定 N，扫描 distinct interval 数量。
 -- 用于量化 INTERVAL_QUEUE 随分组数增长的退化拐点（其它实现按时间分桶，应基本持平）。
@@ -80,6 +85,7 @@ local function makeImpls(hashSize)
 		{ name = "INTERVAL_QUEUE", new = function() return IntervalQueue.CIntervalQueueImpl:New() end },
 		{ name = "HASHED_WHEEL", new = function() return HashedWheel.CHashedWheelImpl:New(ACCURACY, hashSize) end },
 		{ name = "TIMING_WHEEL", new = function() return TimingWheel.CTimingWheelImpl:New(ACCURACY, TW_LEVELS) end },
+		{ name = "HYBRID", new = function() return Hybrid.CHybridImpl:New(HYBRID_THRESHOLD) end },
 	}
 end
 
